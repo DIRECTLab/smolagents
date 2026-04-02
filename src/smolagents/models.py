@@ -398,6 +398,29 @@ def get_clean_message_list(
 
 
 def get_tool_call_from_text(text: str, tool_name_key: str, tool_arguments_key: str) -> ChatMessageToolCall:
+    # 1. Try to parse the custom XML format first
+    text += "</tool_call>"
+    xml_match = re.search(r"<tool_call>\s*<function=([^>]+)>\s*(.*?)\s*</function>\s*</tool_call>", text, re.DOTALL)
+    
+    if xml_match:
+        tool_name = xml_match.group(1).strip()
+        params_text = xml_match.group(2)
+        tool_arguments = {}
+        
+        # Extract all parameters within the function block
+        param_matches = re.finditer(r"<parameter=([^>]+)>\s*(.*?)\s*</parameter>", params_text, re.DOTALL)
+        for param_match in param_matches:
+            param_name = param_match.group(1).strip()
+            param_value = param_match.group(2).strip()
+            tool_arguments[param_name] = param_value
+            
+        return ChatMessageToolCall(
+            id=str(uuid.uuid4()),
+            type="function",
+            function=ChatMessageToolCallFunction(name=tool_name, arguments=tool_arguments),
+        )
+
+    # 2. Fall back to the original JSON-blob parsing
     tool_call_dictionary, _ = parse_json_blob(text)
     try:
         tool_name = tool_call_dictionary[tool_name_key]

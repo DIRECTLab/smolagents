@@ -1292,7 +1292,7 @@ class ToolCallingAgent(MultiStepAgent):
             if self.stream_outputs and hasattr(self.model, "generate_stream"):
                 output_stream = self.model.generate_stream(
                     input_messages,
-                    stop_sequences=["Observation:", "Calling tools:"],
+                    stop_sequences=["Observation:", "Calling tools:", "</tool_call>"],
                     tools_to_call_from=self.tools_and_managed_agents,
                 )
 
@@ -1308,7 +1308,7 @@ class ToolCallingAgent(MultiStepAgent):
             else:
                 chat_message: ChatMessage = self.model.generate(
                     input_messages,
-                    stop_sequences=["Observation:", "Calling tools:"],
+                    stop_sequences=["Observation:", "Calling tools:", "</tool_call>"],
                     tools_to_call_from=self.tools_and_managed_agents,
                 )
                 self.logger.log_markdown(
