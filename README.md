@@ -24,14 +24,25 @@ limitations under the License.
     <a href="https://deepwiki.com/huggingface/smolagents"><img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki"></a>
 </p>
 
+# Changes on This Fork
+This fork is identical to [huggingface/smolagents](https://github.com/huggingface/smolagents/) *except* for a few changes that allow us to use Qwen3.5 models.
+
+### `agents.py`
+Added `</tool_call>` as a stop token in the `_step_stream()` method, so that Qwen3.5's XML-style tool calls trigger tool calling.
+
+### `models.py`
+Added XML tool call parsing in `get_tool_call_from_text()`.
+
+----
+
+`smolagents` is a library that enables you to run powerful agents in a few lines of code. It offers:
+
 <h3 align="center">
   <div style="display:flex;flex-direction:row;">
     <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/smolagents/smolagents.png" alt="Hugging Face mascot as James Bond" width=400px>
     <p>Agents that think in code!</p>
   </div>
 </h3>
-
-`smolagents` is a library that enables you to run powerful agents in a few lines of code. It offers:
 
 ✨ **Simplicity**: the logic for agents fits in ~1,000 lines of code (see [agents.py](https://github.com/huggingface/smolagents/blob/main/src/smolagents/agents.py)). We kept abstractions to their minimal shape above raw code!
 
