@@ -1,0 +1,29 @@
+{% macro user_msg_format(text) %}
+    {{- "<user>" + text + "</user>" }}
+{% endmacro %}
+
+{%- for message in messages %}
+    {%- if message['role'] == 'assistant' and 'tool_calls' in message %}
+        {%- for tool_call in message['tool_calls'] %}
+            {{- '<tool_call>' + tool_call['function']['name'] + '\n' }}
+            {{- tool_call['function']['arguments']|tojson }}
+            {{- '\n</tool_call>' }}
+        {%- endfor %}
+    {%- endif %}
+    {%- if message['role'] == 'tool' %}
+        {{- "<tool_result>" + message['content'] + "</tool_result>" }}
+    {%- endif %}
+    {%- if message['role'] == 'user' %}
+        {%- if message['content'] is string %}
+            {%- set text = user_msg_format(message['content']) %}
+            {{- text }}
+        {%- elif message['content'] is iterable %}
+            {%- for content_type in message['content'] %}
+                {%- if content_type['type'] == 'text' %}
+                    {%- set text = user_msg_format(content_type['text']) %}
+                    {{- text }}
+                {%- endif %}
+            {%- endfor %}
+        {%- endif %}
+    {%- endif %}
+{%- endfor %}

@@ -399,10 +399,10 @@ def get_clean_message_list(
 
 def get_tool_call_from_text(text: str, tool_name_key: str, tool_arguments_key: str) -> ChatMessageToolCall:
     # 1. Try to parse the custom XML format first
-    text += "</tool_call>"
-    xml_match = re.search(r"<tool_call>\s*<function=([^>]+)>\s*(.*?)\s*</function>\s*</tool_call>", text, re.DOTALL)
-    
-    if xml_match:
+    #    (Simple check first so we can add </tool_call> for full regex search)
+    if "<tool_call>" in text:
+        text += "</tool_call>"
+        xml_match = re.search(r"<tool_call>\s*<function=([^>]+)>\s*([\s\S]*?)\s*</function>\s*</tool_call>", text, re.DOTALL)
         tool_name = xml_match.group(1).strip()
         params_text = xml_match.group(2)
         tool_arguments = {}
