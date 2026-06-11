@@ -68,18 +68,12 @@ def format_msgs(template: Template, messages: list[dict]) -> list[str]:
             "messages": msgs_to_format,
             "strftime_now": strftime_now,
         }
-        # output = tokenizer.apply_chat_template(
-        #     msgs_to_format,
-        #     add_generation_prompt=False,
-        #     tokenize=False,
-        #     enable_thinking=False
-        # )
+
         output = template.render(**variables)
         formatted_msgs.append(output[prev_output.__len__():])
         prev_output = output
 
     return formatted_msgs
-
 
 
 
@@ -129,18 +123,8 @@ def find_suffix_prefix_overlap(str1, str2):
             return str2[:i]
     return ""
 
-# def find_suffix_prefix_overlap(str1, str2):
-#     import re
-#     str1_clean = re.sub(r'\s+', '', str1)
-    
-#     for i in range(len(str2), 0, -1):
-#         prefix_clean = re.sub(r'\s+', '', str2[:i])
-#         if prefix_clean and str1_clean.endswith(prefix_clean):
-#             return str2[:i]
-#     return ""
-
-model_id = "google/gemma-4-31B-it"
-# model_id = "Qwen/Qwen3.5-9B"
+# model_id = "google/gemma-4-31B-it"
+model_id = "Qwen/Qwen3.5-9B"
 # model_id = "Qwen/Qwen3.6-27B"
 # model_id = "openai/gpt-oss-120b"
 # model_id = "deepseek-ai/DeepSeek-V4-Pro"
@@ -188,7 +172,7 @@ num_tool_call_msg = {
 }
 
 
-a_message = ChatMessageToolCallFunction(
+function = ChatMessageToolCallFunction(
     name="test_function",
     arguments={
         'test_arg': "test_val",
@@ -196,14 +180,14 @@ a_message = ChatMessageToolCallFunction(
     }
 )
 
-a_function = {
+function_message = {
     "role": "assistant",
     "tool_calls": [
         {
         "type": "function",
         "function": {
-            "name": a_message.name,
-            "arguments": a_message.arguments
+            "name": function.name,
+            "arguments": function.arguments
         }
         }
     ]
@@ -247,7 +231,7 @@ assistant_msg = {
 chat_template = Template(get_chat_template(model_id=model_id))
 
 
-formatted_output = format_msgs(chat_template, [user_msg, num_tool_call_msg, tool_response_msg, a_function])
+formatted_output = format_msgs(chat_template, [user_msg, num_tool_call_msg, tool_response_msg, function_message])
 
 for i, msg in enumerate(formatted_output):
     # print(f"Delta {i}:\n{msg}")
@@ -334,6 +318,8 @@ class ModelGrammar():
     arg_val_separator: str # Character(s) separating the name of an argument from its value
     string_val_wrapper: str # Character(s) wrapping string values in arguments (e.g. ", <|"|>)
     args_separator: str # Character(s) separating the value of an argument from the name of the next one
+    # TODO: Need to handle list argument values
+    # TODO: Need to find other types of argument values
 
     arg_block_post: str # Character(s) after last arg value (end of function call message)
     # TODO: May need something to handle models that do/don't append the opening of the tool response
@@ -376,7 +362,19 @@ gemma_grammar = ModelGrammar(
     arg_block_post="}<tool_call|><|tool_response>"
 )
 
+qwen3_5_grammar = ModelGrammar(
+    func_block_start="<|im_start|>assistant\n<think>\n\n</think>\n\n<tool_call>\n<function=",
+    func_block_end_no_args="</function>\n</tool_call><|im_end|>",
 
+    arg_block_pre=">\n<parameter=",
+    arg_val_separator=">\n",
+    string_val_wrapper="",
+    args_separator="\n</parameter>\n<parameter=",
 
+    arg_block_post="\n</parameter>\n</function>\n</tool_call><|im_end|>"
+)
 
-print(format_tool_call(gemma_grammar, a_message))
+model_grammar_registry = {
+    "google/gemma-4-31B-it": gemma_grammar,
+    "Qwen/Qwen3.5": qwen3_5_grammar
+}

@@ -28,6 +28,7 @@ from .monitoring import TokenUsage
 from .tools import Tool
 from .utils import RateLimiter, Retrying, _is_package_available, encode_image_base64, make_image_url, parse_json_blob
 
+from collections.abc import Callable
 
 if TYPE_CHECKING:
     from transformers import StoppingCriteriaList
@@ -510,6 +511,7 @@ class Model:
         tool_name_key: str = "name",
         tool_arguments_key: str = "arguments",
         model_id: str | None = None,
+        tool_call_parser: Callable[[str], dict] | None = None,
         **kwargs,
     ):
         self.flatten_messages_as_text = flatten_messages_as_text
@@ -517,6 +519,7 @@ class Model:
         self.tool_arguments_key = tool_arguments_key
         self.kwargs = kwargs
         self.model_id: str | None = model_id
+        self.tool_call_parser = tool_call_parser
 
     @property
     def supports_stop_parameter(self) -> bool:
