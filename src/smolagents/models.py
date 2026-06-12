@@ -398,28 +398,23 @@ def get_clean_message_list(
     return output_message_list
 
 
-def get_tool_call_from_text(text: str, tool_name_key: str, tool_arguments_key: str) -> ChatMessageToolCall:
-    # 1. Try to parse the custom XML format first
-    #    (Simple check first so we can add </tool_call> for full regex search)
-    if "<tool_call>" in text:
-        text += "</tool_call>"
-        xml_match = re.search(r"<tool_call>\s*<function=([^>]+)>\s*([\s\S]*?)\s*</function>\s*</tool_call>", text, re.DOTALL)
-        tool_name = xml_match.group(1).strip()
-        params_text = xml_match.group(2)
-        tool_arguments = {}
-        
-        # Extract all parameters within the function block
-        param_matches = re.finditer(r"<parameter=([^>]+)>\s*(.*?)\s*</parameter>", params_text, re.DOTALL)
-        for param_match in param_matches:
-            param_name = param_match.group(1).strip()
-            param_value = param_match.group(2).strip()
-            tool_arguments[param_name] = param_value
-            
-        return ChatMessageToolCall(
-            id=str(uuid.uuid4()),
-            type="function",
-            function=ChatMessageToolCallFunction(name=tool_name, arguments=tool_arguments),
-        )
+def get_tool_call_from_text(
+        text: str,
+        tool_name_key: str,
+        tool_arguments_key: str,
+        custom_parser: Callable[[str], ChatMessageToolCallFunction] | None = None
+    ) -> ChatMessageToolCall:
+    # 1. Try running custom parser if one was provided
+    if custom_parser:
+        try:
+            parser_output = custom_parser(text)
+            return ChatMessageToolCall(
+                id=str(uuid.uuid4()),
+                type="function",
+                function=parser_output,
+            )
+        except:
+            warnings.warn(f"The custom tool call parser ({custom_parser.__name__}) raised an exception. Defaulting to JSON parser.")
 
     # 2. Fall back to the original JSON-blob parsing
     tool_call_dictionary, _ = parse_json_blob(text)
@@ -511,7 +506,6 @@ class Model:
         tool_name_key: str = "name",
         tool_arguments_key: str = "arguments",
         model_id: str | None = None,
-        tool_call_parser: Callable[[str], dict] | None = None,
         **kwargs,
     ):
         self.flatten_messages_as_text = flatten_messages_as_text
@@ -519,7 +513,6 @@ class Model:
         self.tool_arguments_key = tool_arguments_key
         self.kwargs = kwargs
         self.model_id: str | None = model_id
-        self.tool_call_parser = tool_call_parser
 
     @property
     def supports_stop_parameter(self) -> bool:
@@ -553,9 +546,10 @@ class Model:
             flatten_messages_as_text=flatten_messages_as_text,
         )
         # Start with messages
-        completion_kwargs = {
+        completion_kwargs: dict[str, Any] = {
             "messages": messages_as_dicts,
         }
+        
         # Override with specific parameters
         if stop_sequences is not None and self.supports_stop_parameter:
             # Some models do not support stop parameter
@@ -612,7 +606,7 @@ class Model:
         if not message.tool_calls:
             assert message.content is not None, "Message contains no content and no tool calls"
             message.tool_calls = [
-                get_tool_call_from_text(message.content, self.tool_name_key, self.tool_arguments_key)
+                get_tool_call_from_text(message.content, self.tool_name_key, self.tool_arguments_key, custom_parser=self.tool_call_parser)
             ]
         assert len(message.tool_calls) > 0, "No tool call was found in the model output"
         for tool_call in message.tool_calls:

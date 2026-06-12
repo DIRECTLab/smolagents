@@ -1211,10 +1211,24 @@ You have been provided with these additional arguments, that you can access dire
                 repo_type="space",
             )
 
+@dataclass
+class ParsedToolCall():
+    """
+    Represents a tool call parsed form a tool call message
+
+    Attributes:
+        tool_name: The name of the function in the tool call
+        arguments: A dict containing the arguments to pass to the function
+    """
+    tool_name: str
+    arguments: dict[str, Any]
+
+def _parsed_tool_call_adapter(tc: ParsedToolCall):
+    pass
 
 class ToolCallingAgent(MultiStepAgent):
     """
-    This agent uses JSON-like tool calls, using method `model.get_tool_call` to leverage the LLM engine's tool calling capabilities.
+    This agent uses tool calls, using method `model.get_tool_call` to leverage the LLM engine's tool calling capabilities.
 
     Args:
         tools (`list[Tool]`): [`Tool`]s that the agent can use.
@@ -1225,6 +1239,11 @@ class ToolCallingAgent(MultiStepAgent):
         max_tool_threads (`int`, *optional*): Maximum number of threads for parallel tool calls.
             Higher values increase concurrency but resource usage as well.
             Defaults to `ThreadPoolExecutor`'s default.
+        custom_tool_call_parser (`Callable[[str], ParsedToolCall]`, *optional*): A custom tool call 
+            message parser function. It receives the tool call message as an arugment and returns a 
+            ParsedToolCall object.
+        custom_tool_call_stop_sequences (`list[str]`, *optional*): A list of sequences that indicate
+            a tool call message is finished. (Useful if agent keeps making multiple tool calls per step.)
         **kwargs: Additional keyword arguments.
     """
 
@@ -1236,6 +1255,8 @@ class ToolCallingAgent(MultiStepAgent):
         planning_interval: int | None = None,
         stream_outputs: bool = False,
         max_tool_threads: int | None = None,
+        custom_tool_call_parser: Callable[[str], ParsedToolCall] | None = None,
+        custom_tool_call_stop_sequences: list[str] | None = None,
         **kwargs,
     ):
         prompt_templates = prompt_templates or yaml.safe_load(
@@ -1256,6 +1277,8 @@ class ToolCallingAgent(MultiStepAgent):
             )
         # Tool calling setup
         self.max_tool_threads = max_tool_threads
+        self.custom_tool_call_parser = custom_tool_call_parser
+        self.custom_tool_call_stop_sequences = custom_tool_call_stop_sequences
 
     @property
     def tools_and_managed_agents(self):
@@ -1263,6 +1286,7 @@ class ToolCallingAgent(MultiStepAgent):
         return list(self.tools.values()) + list(self.managed_agents.values())
 
     def initialize_system_prompt(self) -> str:
+        
         system_prompt = populate_template(
             self.prompt_templates["system_prompt"],
             variables={
@@ -1272,6 +1296,12 @@ class ToolCallingAgent(MultiStepAgent):
             },
         )
         return system_prompt
+
+    def _use_custom_tool_call_parser(self, message: ChatMessage) -> ChatMessage:
+        """Sometimes APIs do not return the tool call as a specific object, so we need to parse it."""
+        message.role = MessageRole.ASSISTANT  # Overwrite role if needed
+        parsed_tool_call = self.custom_tool_call_parser(message.content)
+        return message
 
     def _step_stream(
         self, memory_step: ActionStep
@@ -1292,7 +1322,7 @@ class ToolCallingAgent(MultiStepAgent):
             if self.stream_outputs and hasattr(self.model, "generate_stream"):
                 output_stream = self.model.generate_stream(
                     input_messages,
-                    stop_sequences=["Observation:", "Calling tools:", "</tool_call>"],
+                    stop_sequences=["Observation:", "Calling tools:"],
                     tools_to_call_from=self.tools_and_managed_agents,
                 )
 
@@ -1308,7 +1338,7 @@ class ToolCallingAgent(MultiStepAgent):
             else:
                 chat_message: ChatMessage = self.model.generate(
                     input_messages,
-                    stop_sequences=["Observation:", "Calling tools:", "</tool_call>"],
+                    stop_sequences=["Observation:", "Calling tools:"],
                     tools_to_call_from=self.tools_and_managed_agents,
                 )
                 self.logger.log_markdown(
@@ -1325,6 +1355,11 @@ class ToolCallingAgent(MultiStepAgent):
             raise AgentGenerationError(f"Error while generating output:\n{e}", self.logger) from e
 
         if chat_message.tool_calls is None or len(chat_message.tool_calls) == 0:
+            if self.custom_tool_call_parser is not None:
+                try:
+                    chat_message = self._use_custom_tool_call_parser(chat_message)
+                except Exception as e:
+                    raise AgentParsingError(f"Error while parsing tool call from model output: {e}", self.logger)
             try:
                 chat_message = self.model.parse_tool_calls(chat_message)
             except Exception as e:
