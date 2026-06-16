@@ -21,6 +21,7 @@ import tempfile
 import textwrap
 import time
 import warnings
+import uuid
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Generator
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -65,6 +66,7 @@ from .models import (
     ChatMessage,
     ChatMessageStreamDelta,
     ChatMessageToolCall,
+    ChatMessageToolCallFunction,
     MessageRole,
     Model,
     agglomerate_stream_deltas,
@@ -1301,7 +1303,17 @@ class ToolCallingAgent(MultiStepAgent):
         """Sometimes APIs do not return the tool call as a specific object, so we need to parse it."""
         message.role = MessageRole.ASSISTANT  # Overwrite role if needed
         parsed_tool_call = self.custom_tool_call_parser(message.content)
-        return message
+        tool_call = ChatMessageToolCall(
+            id=str(uuid.uuid4()),
+            type="function",
+            function=ChatMessageToolCallFunction(
+                name=parsed_tool_call.tool_name,
+                arguments=parsed_tool_call.arguments
+            )
+        )
+        message.tool_calls=[ tool_call ]
+        return message   
+
 
     def _step_stream(
         self, memory_step: ActionStep
@@ -1319,10 +1331,13 @@ class ToolCallingAgent(MultiStepAgent):
         memory_step.model_input_messages = input_messages
 
         try:
+            stop_sequences = ["Observation:", "Calling tools:"]
+            if self.custom_tool_call_stop_sequences:
+                stop_sequences.extend(self.custom_tool_call_stop_sequences)
             if self.stream_outputs and hasattr(self.model, "generate_stream"):
                 output_stream = self.model.generate_stream(
                     input_messages,
-                    stop_sequences=["Observation:", "Calling tools:"],
+                    stop_sequences=stop_sequences,
                     tools_to_call_from=self.tools_and_managed_agents,
                 )
 
@@ -1338,7 +1353,7 @@ class ToolCallingAgent(MultiStepAgent):
             else:
                 chat_message: ChatMessage = self.model.generate(
                     input_messages,
-                    stop_sequences=["Observation:", "Calling tools:"],
+                    stop_sequences=stop_sequences,
                     tools_to_call_from=self.tools_and_managed_agents,
                 )
                 self.logger.log_markdown(
@@ -1356,14 +1371,17 @@ class ToolCallingAgent(MultiStepAgent):
 
         if chat_message.tool_calls is None or len(chat_message.tool_calls) == 0:
             if self.custom_tool_call_parser is not None:
+                # If a custom tool call parser is set, use that.
                 try:
                     chat_message = self._use_custom_tool_call_parser(chat_message)
                 except Exception as e:
                     raise AgentParsingError(f"Error while parsing tool call from model output: {e}", self.logger)
-            try:
-                chat_message = self.model.parse_tool_calls(chat_message)
-            except Exception as e:
-                raise AgentParsingError(f"Error while parsing tool call from model output: {e}", self.logger)
+            else:
+                # If no custom tool call parser is set, use the default JSON-style parser.
+                try:
+                    chat_message = self.model.parse_tool_calls(chat_message)
+                except Exception as e:
+                    raise AgentParsingError(f"Error while parsing tool call from model output: {e}", self.logger)
         else:
             for tool_call in chat_message.tool_calls:
                 tool_call.function.arguments = parse_json_if_needed(tool_call.function.arguments)

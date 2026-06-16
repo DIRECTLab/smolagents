@@ -402,21 +402,8 @@ def get_tool_call_from_text(
         text: str,
         tool_name_key: str,
         tool_arguments_key: str,
-        custom_parser: Callable[[str], ChatMessageToolCallFunction] | None = None
     ) -> ChatMessageToolCall:
-    # 1. Try running custom parser if one was provided
-    if custom_parser:
-        try:
-            parser_output = custom_parser(text)
-            return ChatMessageToolCall(
-                id=str(uuid.uuid4()),
-                type="function",
-                function=parser_output,
-            )
-        except:
-            warnings.warn(f"The custom tool call parser ({custom_parser.__name__}) raised an exception. Defaulting to JSON parser.")
-
-    # 2. Fall back to the original JSON-blob parsing
+    # Fall back to the original JSON-blob parsing
     tool_call_dictionary, _ = parse_json_blob(text)
     try:
         tool_name = tool_call_dictionary[tool_name_key]
@@ -606,7 +593,7 @@ class Model:
         if not message.tool_calls:
             assert message.content is not None, "Message contains no content and no tool calls"
             message.tool_calls = [
-                get_tool_call_from_text(message.content, self.tool_name_key, self.tool_arguments_key, custom_parser=self.tool_call_parser)
+                get_tool_call_from_text(message.content, self.tool_name_key, self.tool_arguments_key)
             ]
         assert len(message.tool_calls) > 0, "No tool call was found in the model output"
         for tool_call in message.tool_calls:
