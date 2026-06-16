@@ -123,8 +123,8 @@ def find_suffix_prefix_overlap(str1, str2):
             return str2[:i]
     return ""
 
-# model_id = "google/gemma-4-31B-it"
-model_id = "Qwen/Qwen3.5-9B"
+model_id = "google/gemma-4-31B-it"
+# model_id = "Qwen/Qwen3.5-9B"
 # model_id = "Qwen/Qwen3.6-27B"
 # model_id = "openai/gpt-oss-120b"
 # model_id = "deepseek-ai/DeepSeek-V4-Pro"
@@ -165,6 +165,7 @@ num_tool_call_msg = {
             "ARG_1": 111,
             "ARG_2": 222,
             "ARG_3": 333,
+            "LIST_ARG": [111, "str", 333]
             }
         }
         }

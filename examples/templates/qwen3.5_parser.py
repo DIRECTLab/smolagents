@@ -109,22 +109,22 @@ custom_stop_sequences = ["<|tool_response>"]
 #     api_key=""
 # )
 
-message = "call:FUNCTION_NAME{ARG_1:111,ARG_2:222,ARG_3:333,LIST_ARG:[111,<|\"|>str<|\"|>,333]}"
+# message = "call:FUNCTION_NAME{ARG_1:111,ARG_2:222,ARG_3:333,LIST_ARG:[111,<|\"|>str<|\"|>,333]}"
 
-print(parse_gemma_4(message))
-# register(project_name="Parser Experiments")
-# SmolagentsInstrumentor().instrument()
+# print(parse_gemma_4(message))
+register(project_name="Parser Experiments")
+SmolagentsInstrumentor().instrument()
 
-# model = TransformersModel(
-#     model_id="google/gemma-4-E2B-it",
-#     device_map="cpu"
-# )
+model = TransformersModel(
+    model_id="google/gemma-4-E2B-it",
+    device_map="cuda"
+)
 
-# agent = ToolCallingAgent(
-#     tools=[get_weather],
-#     model=model,
-#     custom_tool_call_parser=parse_gemma_4,
-#     custom_tool_call_stop_sequences=custom_stop_sequences
-# )
+agent = ToolCallingAgent(
+    tools=[get_weather],
+    model=model,
+    custom_tool_call_parser=parse_gemma_4,
+    custom_tool_call_stop_sequences=custom_stop_sequences
+)
 
-# agent.run("What's the weather like in New York City?")
+agent.run("What's the weather like in New York City?")
