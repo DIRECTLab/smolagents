@@ -1,5 +1,5 @@
 import requests
-from smolagents import ToolCallingAgent, tool, TransformersModel, ParsedToolCall
+from smolagents import ToolCallingAgent, tool, TransformersModel, ParsedToolCall, OpenAIModel
 import re
 
 import ast
@@ -40,26 +40,6 @@ def parse_qwen(message: str) -> ParsedToolCall:
         return ParsedToolCall(tool_name=tool_name, arguments=tool_arguments)
     raise ValueError('Message contained no "<tool_call>" sequence.')
 
-
-# def parse_gemma_4(message: str) -> ParsedToolCall:
-#     print(f"\x1b[33mParsing message:\n{message}\033[0m")
-#     if "<|tool_call>" in message:
-#         message += "<|tool_response>"
-#         xml_match = re.search(r"<\|tool_call>call:([^{]+).*<tool_call\|>", message, re.DOTALL)
-#         tool_name = xml_match.group(1).strip()
-#         params_text = xml_match.group(2)
-#         tool_arguments = {}
-        
-#         # Extract all parameters within the function block
-#         param_matches = re.finditer(r"<parameter=([^>]+)>\s*(.*?)\s*</parameter>", params_text, re.DOTALL)
-#         for param_match in param_matches:
-#             param_name = param_match.group(1).strip()
-#             param_value = param_match.group(2).strip()
-#             tool_arguments[param_name] = param_value
-            
-#         return ParsedToolCall(tool_name=tool_name, arguments=tool_arguments)
-#     raise ValueError('Message contained no "<tool_call>" sequence.')
-
 def parse_gemma_4(message: str) -> ParsedToolCall:
     # Example tool call:
     #   call:get_weather{location:<|"|>New York City<|"|>}
@@ -70,11 +50,11 @@ def parse_gemma_4(message: str) -> ParsedToolCall:
     tool_arguments = {}
     
     # Extract all parameters within the function block
-    param_matches = re.finditer(r"([a-zA-Z0-9_]+)\s*:\s*(<\|\"\|>.*?<\|\"\|>|\d+|\[.*?\])", params_text, re.DOTALL)
+    param_matches = re.finditer(r"([a-zA-Z0-9_]+)\s*:\s*(<\|\"\|>.*?<\|\"\|>|\[.*?\]|[^,]+)", params_text, re.DOTALL)
     for param_match in param_matches:
         param_name = param_match.group(1).strip()
         param_value = param_match.group(2).strip()
-
+        print(param_value)
             
         # Clean up the custom quotes if they exist
         if param_value.startswith('<|"|>') and param_value.endswith('<|"|>'):
@@ -92,6 +72,7 @@ def parse_gemma_4(message: str) -> ParsedToolCall:
                 try:
                     param_value = float(param_value)
                 except ValueError:
+                    print("ERRORRROROROR")
                     # Give a guiding error message for models that forget to wrap strings in quotes
                     raise ValueError(f"Value of {param_name} (\"{param_value}\") is not a string, but cannot be converted to a number.")
 
@@ -102,21 +83,52 @@ def parse_gemma_4(message: str) -> ParsedToolCall:
 
 # custom_stop_sequences = ["</tool_call>"]
 custom_stop_sequences = ["<|tool_response>"]
+# custom_stop_sequences = []
 
-# model = OpenAIModel(
-#     model_id="local",
-#     api_base="http://127.0.0.1:8000/v1",
-#     api_key=""
-# )
+model = OpenAIModel(
+    model_id="local",
+    api_base="http://127.0.0.1:8000/v1",
+    api_key="key"
+)
 
-# message = "call:FUNCTION_NAME{ARG_1:111,ARG_2:222,ARG_3:333,LIST_ARG:[111,<|\"|>str<|\"|>,333]}"
-
+# message = "call:FUNCTION_NAME{ARG_1:111,ARG_2:222,ARG_3:333,LIST_ARG:[111,<|\"|>str<|\"|>,333],location:ok then}"
 # print(parse_gemma_4(message))
-register(project_name="Parser Experiments")
-SmolagentsInstrumentor().instrument()
+
+
+def create_system_prompt(agent: ToolCallingAgent):
+    tool_msgs = [
+        {
+            "role": "assistant",
+            "tool_calls": [
+                {
+                "type": "function",
+                "function": {
+                    "name": "FUNCTION_NAME",
+                    "arguments": {
+                        "ARG_1": 111,
+                    }
+                }
+                }
+            ]
+        }
+    ]
+
+    if isinstance(agent.model, TransformersModel):
+        try:
+            tokenized_chat = agent.model.tokenizer.apply_chat_template(tool_msgs, tokenize=True, add_generation_prompt=False, add_special_tokens=False, return_tensors="pt")
+            output = agent.model.tokenizer.decode(tokenized_chat[0])
+        except Exception as e:
+            print(f"Exception {e} \nTRYING PROCESSOR")
+            tokenized_chat = agent.model.processor.apply_chat_template(tool_msgs, tokenize=True, add_generation_prompt=False, add_special_tokens=False, return_tensors="pt")
+            output = agent.model.processor.decode(tokenized_chat[0])
+        print(output)
+        
+
+# register(project_name="Parser Experiments")
+# SmolagentsInstrumentor().instrument()
 
 model = TransformersModel(
-    model_id="google/gemma-4-E2B-it",
+    model_id="google/gemma-4-12B-it",
     device_map="cuda"
 )
 
@@ -124,7 +136,20 @@ agent = ToolCallingAgent(
     tools=[get_weather],
     model=model,
     custom_tool_call_parser=parse_gemma_4,
-    custom_tool_call_stop_sequences=custom_stop_sequences
+    custom_tool_call_stop_sequences=custom_stop_sequences,
 )
 
-agent.run("What's the weather like in New York City?")
+create_system_prompt(agent)
+
+# with open("gemma_system_prompt.jinja", "r") as f:
+#     prompt = f.read()
+#     agent = ToolCallingAgent(
+#         tools=[get_weather],
+#         model=model,
+#         custom_tool_call_parser=parse_gemma_4,
+#         custom_tool_call_stop_sequences=custom_stop_sequences,
+#     )
+
+#     agent.prompt_templates['system_prompt'] = prompt
+
+#     agent.run("What's the weather like in New York City?")
