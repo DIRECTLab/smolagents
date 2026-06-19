@@ -85,11 +85,6 @@ def parse_gemma_4(message: str) -> ParsedToolCall:
 custom_stop_sequences = ["<|tool_response>"]
 # custom_stop_sequences = []
 
-model = OpenAIModel(
-    model_id="local",
-    api_base="http://127.0.0.1:8000/v1",
-    api_key="key"
-)
 
 # message = "call:FUNCTION_NAME{ARG_1:111,ARG_2:222,ARG_3:333,LIST_ARG:[111,<|\"|>str<|\"|>,333],location:ok then}"
 # print(parse_gemma_4(message))
@@ -97,6 +92,10 @@ model = OpenAIModel(
 
 def create_system_prompt(agent: ToolCallingAgent):
     tool_msgs = [
+        {
+            "role": "user",
+            "content": "text"
+        },
         {
             "role": "assistant",
             "tool_calls": [
@@ -113,43 +112,63 @@ def create_system_prompt(agent: ToolCallingAgent):
         }
     ]
 
-    if isinstance(agent.model, TransformersModel):
-        try:
-            tokenized_chat = agent.model.tokenizer.apply_chat_template(tool_msgs, tokenize=True, add_generation_prompt=False, add_special_tokens=False, return_tensors="pt")
-            output = agent.model.tokenizer.decode(tokenized_chat[0])
-        except Exception as e:
-            print(f"Exception {e} \nTRYING PROCESSOR")
-            tokenized_chat = agent.model.processor.apply_chat_template(tool_msgs, tokenize=True, add_generation_prompt=False, add_special_tokens=False, return_tensors="pt")
-            output = agent.model.processor.decode(tokenized_chat[0])
+    if hasattr(agent.model, "tokenizer"):
+        tokenized_chat = agent.model.tokenizer.apply_chat_template(
+            tool_msgs,
+            tokenize=True,
+            add_generation_prompt=False,
+            add_special_tokens=False,
+            return_tensors="pt"
+        )
+        output = agent.model.tokenizer.decode(tokenized_chat[0])
+    elif hasattr(agent.model, "processor"):
+        tokenized_chat = agent.model.processor.apply_chat_template(
+            tool_msgs,
+            tokenize=True,
+            add_generation_prompt=False,
+            add_special_tokens=False,
+            return_tensors="pt"
+        )
+        output = agent.model.processor.decode(tokenized_chat[0])
         print(output)
         
 
 # register(project_name="Parser Experiments")
 # SmolagentsInstrumentor().instrument()
 
+# model = OpenAIModel(
+#     model_id="local",
+#     api_base="http://127.0.0.1:8000/v1",
+#     api_key="key"
+# )
+
+
+# model_id="Qwen/Qwen3.5-4B"
+model_id="google/gemma-4-12B-it"
+
 model = TransformersModel(
-    model_id="google/gemma-4-12B-it",
+    model_id=model_id,
     device_map="cuda"
 )
 
 agent = ToolCallingAgent(
     tools=[get_weather],
     model=model,
-    custom_tool_call_parser=parse_gemma_4,
-    custom_tool_call_stop_sequences=custom_stop_sequences,
+    # custom_tool_call_parser=parse_gemma_4,
+    # custom_tool_call_stop_sequences=custom_stop_sequences,
 )
 
-create_system_prompt(agent)
+# create_system_prompt(agent)
 
-# with open("gemma_system_prompt.jinja", "r") as f:
-#     prompt = f.read()
-#     agent = ToolCallingAgent(
-#         tools=[get_weather],
-#         model=model,
-#         custom_tool_call_parser=parse_gemma_4,
-#         custom_tool_call_stop_sequences=custom_stop_sequences,
-#     )
+with open("gemma4_system_prompt.jinja", "r") as f:
+    prompt = f.read()
+    agent = ToolCallingAgent(
+        tools=[get_weather],
+        model=model,
+        # custom_tool_call_parser=parse_gemma_4,
+        # custom_tool_call_stop_sequences=custom_stop_sequences,
+    )
 
-#     agent.prompt_templates['system_prompt'] = prompt
+    agent.prompt_templates['system_prompt'] = prompt
 
-#     agent.run("What's the weather like in New York City?")
+    agent.run("What's the weather like in New York City?")
